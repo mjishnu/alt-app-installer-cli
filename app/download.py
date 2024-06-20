@@ -31,17 +31,18 @@ def download(url, ignore_ver, all_dependencies):
         url_generator(url, ignore_ver, all_dependencies)
     )
 
-    dwnpath = f"{script_dir}//downloads/"
+    dwnpath = "downloads/"
 
     if not os.path.exists(dwnpath):
         os.makedirs(dwnpath)
 
-    path_lst = {}
+    path_lst = []
     tasks = []
     d = PypdlFactory(instances=2, logger=default_logger("downloader"))
     for f_name in final_data:
         remote_url = main_dict[f_name]
         path = f"{dwnpath}{f_name}"
+        path_lst.append(path)
         mirror_func = lambda: new_url_gen(f_name)
         tasks.append(
             (
