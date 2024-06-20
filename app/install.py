@@ -1,9 +1,6 @@
-import os
+import subprocess
 import time
 from datetime import datetime
-import subprocess
-
-script_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 def install(paths, uwp):

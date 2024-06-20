@@ -3,16 +3,13 @@ import logging
 import os
 
 from pypdl import PypdlFactory
-
 from url_gen import url_generator
-
-script_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 def default_logger(name: str) -> logging.Logger:
     """Creates a default debugging logger."""
     logger = logging.getLogger(name)
-    handler = logging.FileHandler(f"{script_dir}/log.txt", mode="a", delay=True)
+    handler = logging.FileHandler("log.txt", mode="a", delay=True)
     custom_format = (
         f"[{name} logs] \n[%(asctime)s]\n\n %(levelname)s: %(message)s\n{82*"-"}\n"
     )
