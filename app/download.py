@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 
-from pypdl import PypdlFactory
+from pypdl import Pypdl
 from url_gen import url_generator
 
 
@@ -19,10 +19,6 @@ def default_logger(name: str) -> logging.Logger:
 
 
 def download(url, ignore_ver, all_dependencies):
-    def new_url_gen(f_name):
-        urls = asyncio.run(url_generator(url, ignore_ver, all_dependencies))
-        return urls[0][f_name]
-
     print("Fetching data...")
     main_dict, final_data, file_name, uwp = asyncio.run(
         url_generator(url, ignore_ver, all_dependencies)
@@ -35,24 +31,24 @@ def download(url, ignore_ver, all_dependencies):
 
     path_lst = []
     tasks = []
-    d = PypdlFactory(instances=2, logger=default_logger("downloader"))
+    d = Pypdl(logger=default_logger("downloader"), max_concurrent=2)
     for f_name in final_data:
         remote_url = main_dict[f_name]
         path = f"{dwnpath}{f_name}"
         path_lst.append(path)
-        mirror_func = lambda: new_url_gen(f_name)
+
+        async def new_url_gen():
+            urls = await url_generator(url, ignore_ver, all_dependencies)
+            return urls[0][f_name]
+
         tasks.append(
-            (
-                remote_url,
-                {
-                    "file_path": path,
-                    "segments": 10,
-                    "retries": 3,
-                    "mirror_func": mirror_func,
-                },
-            )
+            {
+                "url": remote_url,
+                "file_path": path,
+                "mirrors": new_url_gen,
+            }
         )
-    d.start(tasks)
+    d.start(tasks=tasks, retries=3, overwrite=False, clear_terminal=False)
     print(f"Downloaded Package:{final_data}")
 
     return path_lst, uwp
