@@ -673,7 +673,8 @@
 				<ProductsParameters>
 					<SyncCurrentVersionOnly>false</SyncCurrentVersionOnly>
 					<DeviceAttributes>
-						BranchReadinessLevel=CB;CurrentBranch=rs_prerelease;FlightRing={2};FlightingBranchName=external;IsFlightingEnabled=1;InstallLanguage=en-US;OSUILocale=en-US;InstallationType=Client;DeviceFamily=Windows.Desktop;</DeviceAttributes>
+						BranchReadinessLevel=CB;CurrentBranch=rs_prerelease;FlightRing={2};FlightingBranchName=external;IsFlightingEnabled=1;InstallLanguage=en-US;OSUILocale=en-US;InstallationType=Client;DeviceFamily=Windows.Desktop;
+					</DeviceAttributes>
 					<CallerAttributes>Interactive=1;IsSeeker=0;</CallerAttributes>
 					<Products />
 				</ProductsParameters>

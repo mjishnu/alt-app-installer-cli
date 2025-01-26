@@ -11,6 +11,7 @@ def install(paths, uwp):
                 command,
             ],
             capture_output=True,
+            text=True,
         )
         return output
 
@@ -19,14 +20,16 @@ def install(paths, uwp):
             output = run(f'Add-AppPackage "{path}"')
         else:
             output = run(f'Start-Process "{path}"')
+
         print(f"Processed: {path.split('/')[-1]}")
 
-        with open("log.txt", "a") as f:
-            current_time = datetime.now().strftime("[%d-%m-%Y %H:%M:%S]")
-            f.write(f"[powershell logs] \n{current_time}\n\n")
-            f.write(f"command: {output.args[1]}\n\n")
-            f.write(output.stderr.decode("utf-8"))
-            f.write(f'{82*"-"}\n')
+        if output.returncode != 0:
+            with open("log.txt", "a") as f:
+                current_time = datetime.now().strftime("[%d-%m-%Y %H:%M:%S]")
+                f.write(f"[powershell logs] \n{current_time}\n\n")
+                f.write(f"command: {output.args[1]}\n\n")
+                f.write(output.stderr)
+                f.write(f"{82 * '-'}\n")
 
         time.sleep(0.3)
 

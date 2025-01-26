@@ -13,13 +13,6 @@ import aiohttp
 warnings.filterwarnings("ignore")
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# using this to check if the user has decieded to stop the process
-
-
-def check(Event):
-    if Event.is_set():
-        raise Exception("Stoped By User!")
-
 
 def os_arc():
     machine = platform.machine().lower()
@@ -42,283 +35,289 @@ def clean_name(badname):
     return name.lower()
 
 
-def select_latest(content_list, curr_arch, ignore_ver=False):
-    # Score function returns a tuple, higher is better
+def select_best(items, curr_arch, ignore_ver=False, is_installer=False):
+    """
+    Select best item based on scoring system.
+    For UWP: Prioritize arch -> file type -> date -> version
+    For installers: Prioritize arch -> locale -> installer type
+    """
+
     def score(item):
-        fav_type = {"appx", "msix", "msixbundle", "appxbundle"}
-        arch, ext, modified_str, version_str = item
-        # 2 = exact arch, 1 = neutral, 0 = something else
-        arch_score = 2 if arch == curr_arch else (1 if arch == "neutral" else 0)
-        # 1 = favorable type, 0 = other
-        type_score = 1 if ext in fav_type else 0
-        if ignore_ver:
-            dt = 0
-            ver_tuple = (0, 0, 0, 0)
+        if is_installer:
+            arch, locale, inst_type, url = item
+            # 2 = exact arch, 1 = neutral, 0 = other
+            arch_score = 2 if arch == curr_arch else (1 if arch == "neutral" else 0)
+            # 2 = en-us, 1 = en/us contained, 0 = other
+            locale_score = (
+                2
+                if locale == "en-us"
+                else 1
+                if ("en" in locale or "us" in locale)
+                else 0
+            )
+            return (arch_score, locale_score, inst_type)
         else:
-            dt = datetime.datetime.fromisoformat(modified_str)
-            ver_tuple = tuple(map(int, version_str.split(".")))
-        # The “score” is a tuple that Python compares in order
-        # Higher arch_score > better type_score > later date > bigger version
-        return (arch_score, type_score, dt, ver_tuple)
+            arch, ext, modified_str, version_str = item
+            fav_type = {"appx", "msix", "msixbundle", "appxbundle"}
+            arch_score = 2 if arch == curr_arch else (1 if arch == "neutral" else 0)
+            type_score = 1 if ext in fav_type else 0
 
-    # Filter to arch in (curr_arch, "neutral") so we don’t pick nonsense arch
-    candidates = [item for item in content_list if item[0] in (curr_arch, "neutral")]
-    if not candidates:
-        candidates = content_list  # fallback if no matching arch at all
-
-    # Pick the item with the best score
-    best = max(candidates, key=score)
-    return best
-
-
-async def url_generator(url, ignore_ver, all_dependencies):
-    async def uwp_gen(session):
-        def parse_dict(main_dict, file_name):
-            file_name = clean_name(file_name.split("-")[0])
-            pattern = re.compile(r".+\.BlockMap")
-            full_data = {}
-
-            for key, value in main_dict.items():
-                if not pattern.search(str(key)):
-                    temp = key.split("_")
-                    content_lst = (
-                        clean_name(temp[0]),
-                        temp[2].lower(),
-                        temp[-1].split(".")[1].lower(),
-                        value,
-                        temp[1],
-                    )
-                    full_data[content_lst] = key
-
-            names_dict = {}
-            for v in full_data:
-                names_dict.setdefault(v[0], []).append(v[1:])
-
-            file_arch, main_file_name, main_file_name_key = None, None, None
-            pat_main = re.compile(file_name)
-            sys_arch = os_arc()
-            for k in names_dict:
-                if pat_main.search(k):
-                    content_list = names_dict[k]
-                    main_file_name_key = k
-                    arch, ext, modifed, ver = select_latest(content_list, sys_arch)
-                    main_file_name = full_data[(k, arch, ext, modifed, ver)]
-                    file_arch = sys_arch if arch == "neutral" else arch
-                    break
-
-            del names_dict[main_file_name_key]
-
-            final_list = []
-            for k in names_dict:
-                content_list = names_dict[k]
-                if all_dependencies:
-                    for data in content_list:
-                        final_list.append(full_data[(k, *data)])
-                else:
-                    arch, ext, modifed, ver = select_latest(content_list, file_arch)
-                    final_list.append(full_data[(k, arch, ext, modifed, ver)])
-
-            if main_file_name:
-                final_list.append(main_file_name)
-                file_name = main_file_name
+            if ignore_ver:
+                dt = 0
+                ver_tuple = (0, 0, 0, 0)
             else:
-                file_name = final_list[0] if final_list else file_name
+                dt = datetime.datetime.fromisoformat(modified_str)
+                ver_tuple = tuple(map(int, version_str.split(".")))
+            return (arch_score, type_score, dt, ver_tuple)
 
-            return final_list, file_name
+    # Filter arch to (curr_arch or "neutral"), else fallback
+    candidates = [item for item in items if item[0] in (curr_arch, "neutral")]
+    candidates = candidates or items
 
-        cat_id = data_list["WuCategoryId"]
-        main_file_name = data_list["PackageFamilyName"].split("_")[0]
-        # {'Retail': 'retail', 'Release Preview': 'RP', 'Insider Slow': 'WIS', 'Insider Fast': 'WIF'}
-        release_type = "retail"
+    return max(candidates, key=score)
 
-        # getting the encrypted cookie for the fe3 delivery api
-        with open(rf"{script_dir}\data\xml\GetCookie.xml", "r") as f:
-            cookie_content = f.read()
-        out = await (
+
+def parse_dict(main_dict, file_name, ignore_ver, all_dependencies):
+    """Parse the dictionary and return the best file(s)"""
+    # Prep the incoming 'file_name' for matching
+    base_name = clean_name(file_name.split("-")[0])
+    blockmap_pattern = re.compile(r".+\.BlockMap")
+
+    # Build a dictionary of structured data for easy lookup
+    full_data = {}
+    for key, value in main_dict.items():
+        if not blockmap_pattern.search(str(key)):
+            parts = key.split("_")
+            mapped_key = (
+                clean_name(parts[0]),
+                parts[2].lower(),
+                parts[-1].split(".")[1].lower(),
+                value,
+                parts[1],
+            )
+            full_data[mapped_key] = key
+
+    # Collect entries by their “cleaned-up name”
+    names_dict = {}
+    for mapped_key in full_data:
+        name_base = mapped_key[0]
+        names_dict.setdefault(name_base, []).append(mapped_key[1:])
+
+    file_arch = None
+    main_file_name_entry = None
+    pat_main = re.compile(base_name)
+    sys_arch = os_arc()
+
+    # Identify the main file
+    matching_base = None
+    for name_base in names_dict:
+        if pat_main.search(name_base):
+            matching_base = name_base
+            break
+
+    # Process matching entry if found
+    if matching_base:
+        content_list = names_dict[matching_base]
+        arch, ext, modified, version = select_best(content_list, sys_arch)
+        main_file_name_entry = full_data[(matching_base, arch, ext, modified, version)]
+        file_arch = sys_arch if arch == "neutral" else arch
+        del names_dict[matching_base]
+    else:
+        raise Exception("No file found")
+
+    # Gather dependencies or single-file results
+    final_list = []
+    for name_base, content_list in names_dict.items():
+        if all_dependencies:
+            for data in content_list:
+                final_list.append(full_data[(name_base, *data)])
+        else:
+            arch, ext, modified, version = select_best(
+                content_list, file_arch, ignore_ver
+            )
+            final_list.append(full_data[(name_base, arch, ext, modified, version)])
+
+    # If we found a main file, append it
+    if main_file_name_entry:
+        final_list.append(main_file_name_entry)
+        file_name = main_file_name_entry
+    else:
+        # If no explicit main file found, pick the first from final_list
+        if final_list:
+            file_name = final_list[0]
+
+    return final_list, file_name
+
+
+async def uwp_gen(session, data_list, ignore_ver, all_dependencies):
+    """Get UWP app installer info from Microsoft Store"""
+    cat_id = data_list["WuCategoryId"]
+    main_file_name = data_list["PackageFamilyName"].split("_")[0]
+    release_type = "retail"
+
+    # 1. Get encrypted cookie
+    with open(f"{script_dir}/data/xml/GetCookie.xml", "r") as f:
+        cookie_template = f.read()
+
+    response_text = await (
+        await session.post(
+            "https://fe3cr.delivery.mp.microsoft.com/ClientWebService/client.asmx",
+            data=cookie_template,
+            headers={"Content-Type": "application/soap+xml; charset=utf-8"},
+        )
+    ).text()
+
+    cookie_doc = minidom.parseString(response_text)
+    cookie = cookie_doc.getElementsByTagName("EncryptedData")[0].firstChild.nodeValue
+
+    # 2. Request IDs and filenames
+    with open(f"{script_dir}/data/xml/WUIDRequest.xml", "r") as f:
+        wuid_template = f.read().format(cookie, cat_id, release_type)
+
+    response_text = await (
+        await session.post(
+            "https://fe3cr.delivery.mp.microsoft.com/ClientWebService/client.asmx",
+            data=wuid_template,
+            headers={"Content-Type": "application/soap+xml; charset=utf-8"},
+        )
+    ).text()
+
+    xml_doc = minidom.parseString(html.unescape(response_text))
+
+    # Collect filenames {ID: (prefixed_filename, modifiedDate)}
+    filenames_map = {}
+    for files_node in xml_doc.getElementsByTagName("Files"):
+        try:
+            node_id = files_node.parentNode.parentNode.getElementsByTagName("ID")[
+                0
+            ].firstChild.nodeValue
+            prefix = files_node.firstChild.attributes[
+                "InstallerSpecificIdentifier"
+            ].value
+            fname = files_node.firstChild.attributes["FileName"].value
+            modified = files_node.firstChild.attributes["Modified"].value
+            filenames_map[node_id] = (f"{prefix}_{fname}", modified)
+        except KeyError:
+            continue
+
+    if not filenames_map:
+        raise Exception("server returned an empty list")
+
+    # 3. Parse update IDs from SecuredFragment
+    identities = {}
+    name_modified = {}
+    for fragment_node in xml_doc.getElementsByTagName("SecuredFragment"):
+        try:
+            fn_id = fragment_node.parentNode.parentNode.parentNode.getElementsByTagName(
+                "ID"
+            )[0].firstChild.nodeValue
+            file_name, modified = filenames_map[fn_id]
+            top_node = fragment_node.parentNode.parentNode.firstChild
+            update_id = top_node.attributes["UpdateID"].value
+            rev_num = top_node.attributes["RevisionNumber"].value
+
+            name_modified[file_name] = modified
+            identities[file_name] = (update_id, rev_num)
+        except KeyError:
+            continue
+
+    # 4. Choose the best files via parse_dict
+    parse_names, main_file_name = parse_dict(
+        name_modified, main_file_name, ignore_ver, all_dependencies
+    )
+
+    # Build a dict of {filename: (update_id, revision_number)}
+    final_dict = {}
+    for val in parse_names:
+        final_dict[val] = identities[val]
+
+    # 5. Download URLs for each selected file
+    with open(f"{script_dir}/data/xml/FE3FileUrl.xml", "r") as f:
+        file_template = f.read()
+
+    file_dict = {}
+
+    async def geturl(update_id, revision_num, file_name):
+        resp_text = await (
             await session.post(
-                "https://fe3cr.delivery.mp.microsoft.com/ClientWebService/client.asmx",
-                data=cookie_content,
+                "https://fe3cr.delivery.mp.microsoft.com/ClientWebService/client.asmx/secured",
+                data=file_template.format(update_id, revision_num, release_type),
                 headers={"Content-Type": "application/soap+xml; charset=utf-8"},
             )
         ).text()
-        doc = minidom.parseString(out)
+        doc = minidom.parseString(resp_text)
+        for loc in doc.getElementsByTagName("FileLocation"):
+            url = loc.getElementsByTagName("Url")[0].firstChild.nodeValue
+            # blockmap vs actual file
+            if len(url) != 99:
+                file_dict[file_name] = url
 
-        # extracting the cooking from the EncryptedData tag
-        cookie = doc.getElementsByTagName("EncryptedData")[0].firstChild.nodeValue
+    tasks = []
+    for file_name, (upd_id, rev_num) in final_dict.items():
+        tasks.append(asyncio.create_task(geturl(upd_id, rev_num, file_name)))
 
-        # getting the update id,revision number and package name from the fe3 delivery api by providing the encrpyted cookie, cat_id, realse type
-        # Map {"retail": "Retail", "release preview": "RP","insider slow": "WIS", "insider fast": "WIF"}
-        with open(rf"{script_dir}\data\xml\WUIDRequest.xml", "r") as f:
-            cat_id_content = f.read().format(cookie, cat_id, release_type)
-        out = await (
-            await session.post(
-                "https://fe3cr.delivery.mp.microsoft.com/ClientWebService/client.asmx",
-                data=cat_id_content,
-                headers={"Content-Type": "application/soap+xml; charset=utf-8"},
-            )
-        ).text()
+    await asyncio.gather(*tasks)
 
-        doc = minidom.parseString(html.unescape(out))
-        filenames = {}  # {ID: filename}
-        # extracting all the filenames(package name) from the xml (the file names are found inside the blockmap)
-        for node in doc.getElementsByTagName("Files"):
-            # using try statement to avoid errors caused when attributes are not found
-            try:
-                filenames[
-                    node.parentNode.parentNode.getElementsByTagName("ID")[
-                        0
-                    ].firstChild.nodeValue
-                ] = (
-                    f"{node.firstChild.attributes['InstallerSpecificIdentifier'].value}_{node.firstChild.attributes['FileName'].value}",
-                    node.firstChild.attributes["Modified"].value,
-                )
-            except KeyError:
-                continue
-        # if the server returned no files notify the user that the app was not found
-        if not filenames:
-            raise Exception("server returned a empty list")
+    # 6. Verify everything downloaded
+    if len(file_dict) != len(final_dict):
+        raise Exception("server returned an incomplete list")
 
-        # extracting the update id,revision number from the xml
-        identities = {}  # {filename: (update_id, revision_number)}
-        name_modified = {}  # {filename: (update_id, revision_number, modified)}
-        for node in doc.getElementsByTagName("SecuredFragment"):
-            # using try statement to avoid errors caused when attributes are not found
-            try:
-                file_name, modifed = filenames[
-                    node.parentNode.parentNode.parentNode.getElementsByTagName("ID")[
-                        0
-                    ].firstChild.nodeValue
-                ]
+    return file_dict, parse_names, main_file_name, True
 
-                update_identity = node.parentNode.parentNode.firstChild
-                name_modified[file_name] = modifed
-                identities[file_name] = (
-                    update_identity.attributes["UpdateID"].value,
-                    update_identity.attributes["RevisionNumber"].value,
-                )
-            except KeyError:
-                continue
-        # parsing the filenames according to latest version,favorable types,system arch
-        parse_names, main_file_name = parse_dict(name_modified, main_file_name)
-        final_dict = {}  # {filename: (update_id, revision_number)}
-        for value in parse_names:
-            final_dict[value] = identities[value]
-        # getting the download url for the files using the api
-        with open(rf"{script_dir}\data\xml\FE3FileUrl.xml", "r") as f:
-            file_content = f.read()
 
-        file_dict = {}  # the final result
+async def non_uwp_gen(session, product_id):
+    """Get non-UWP app installer info from Microsoft Store"""
 
-        async def geturl(updateid, revisionnumber, file_name):
-            out = await (
-                await session.post(
-                    "https://fe3cr.delivery.mp.microsoft.com/ClientWebService/client.asmx/secured",
-                    data=file_content.format(updateid, revisionnumber, release_type),
-                    headers={"Content-Type": "application/soap+xml; charset=utf-8"},
-                )
-            ).text()
-            doc = minidom.parseString(out)
-            # checks for all the tags which have name "filelocation" and extracts the url from it
-            for i in doc.getElementsByTagName("FileLocation"):
-                url = i.getElementsByTagName("Url")[0].firstChild.nodeValue
-                # here there are 2 filelocation tags one for the blockmap and one for the actual file so we are checking for the length of the url
-                if len(url) != 99:
-                    file_dict[file_name] = url
+    # 1. Fetch package manifest
+    api_url = (
+        f"https://storeedgefd.dsx.mp.microsoft.com/v9.0/packageManifests/{product_id}"
+    )
+    api_params = "?market=US&locale=en-us&deviceFamily=Windows.Desktop"
 
-        # creating a list of tasks to be executed
-        tasks = []
-        for key, value in final_dict.items():
-            file_name = key
-            updateid, revisionnumber = value
-            tasks.append(
-                asyncio.create_task(geturl(updateid, revisionnumber, file_name))
-            )
+    response = await session.get(api_url + api_params)
+    data = json.loads(await response.text())
 
-        await asyncio.gather(*tasks)
-        #  waiting for all threads to complete
-        if len(file_dict) != len(final_dict):
-            raise Exception("server returned a incomplete list")
+    if not data.get("Data"):
+        raise Exception("Server returned empty package data")
 
-        # uwp = True
-        return file_dict, parse_names, main_file_name, True
+    # 2. Get package name and installers
+    package_name = data["Data"]["Versions"][0]["DefaultLocale"]["PackageName"]
+    installers = data["Data"]["Versions"][0]["Installers"]
 
-    async def non_uwp_gen(session):
-        api = f"https://storeedgefd.dsx.mp.microsoft.com/v9.0/packageManifests//{product_id}?market=US&locale=en-us&deviceFamily=Windows.Desktop"
+    # 3. Extract unique installer combinations
+    installer_options = {
+        (i["Architecture"], i["InstallerLocale"], i["InstallerType"], i["InstallerUrl"])
+        for i in installers
+    }
 
-        data = await (await session.get(api)).text()
-        datas = json.loads(data)
+    # 5. Build result
+    chosen = select_best(installer_options, curr_arch=os_arc(), is_installer=True)
+    main_file_name = f"{clean_name(package_name)}.{chosen[2]}"
 
-        if not datas.get("Data", None):
-            raise Exception("server returned a empty list")
+    return (
+        {main_file_name: chosen[3]},  # file_dict
+        [main_file_name],  # file list
+        main_file_name,  # main file
+        False,  # is_uwp flag
+    )
 
-        file_name = datas["Data"]["Versions"][0]["DefaultLocale"]["PackageName"]
 
-        installer_list = datas["Data"]["Versions"][0]["Installers"]
-        download_data = set()
-        for d in installer_list:
-            download_data.add(
-                (
-                    d["Architecture"],
-                    d["InstallerLocale"],
-                    d["InstallerType"],
-                    d["InstallerUrl"],
-                )
-            )
+def extract_product_id(url):
+    """Extract product ID from Microsoft Store URL"""
+    pattern = re.compile(r".+\/([^\/\?]+)(?:\?|$)")
+    if match := pattern.search(str(url)):
+        return match.group(1)
+    raise ValueError("Invalid URL format - Please provide a valid Microsoft Store URL")
 
-        curr_arch = os_arc()
-        file_dict = {}
-        # casting to list for indexing
-        download_data = list(download_data)
 
-        # parsing
-        arch = download_data[0][0]
-        locale = download_data[0][1]
-        installer_type = download_data[0][2]
-        url = download_data[0][3]
+async def fetch_product_details(session, product_id):
+    """Fetch product details from Microsoft Store API"""
+    api_url = f"https://storeedgefd.dsx.mp.microsoft.com/v9.0/products/{product_id}"
+    params = "?market=US&locale=en-us&deviceFamily=Windows.Desktop"
 
-        if len(download_data) > 1:
-            for data in download_data[1:]:
-                if (
-                    arch not in ("neutral", curr_arch)
-                    and data[0] != arch
-                    and data[0] in ("neutral", curr_arch)
-                ):
-                    arch = data[0]
-                    locale = data[1]
-                    installer_type = data[2]
-                    url = data[3]
-                else:
-                    if (
-                        data[0] == arch
-                        and data[1] != locale
-                        and ("us" in data[1] or "en" in data[1])
-                    ):
-                        locale = data[1]
-                        installer_type = data[2]
-                        url = data[3]
-                        break
-
-        main_file_name = clean_name(file_name) + "." + installer_type
-        file_dict[main_file_name] = url
-
-        # uwp = False
-        return file_dict, [main_file_name], main_file_name, False
-
-    # geting product id from url
-    try:
-        pattern = re.compile(r".+\/([^\/\?]+)(?:\?|$)")
-        matches = pattern.search(str(url))
-        product_id = matches.group(1)
-    except AttributeError:
-        raise Exception("No Data Found: --> [You Selected Wrong Page, Try Again!]")
-
-    async with aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=60), raise_for_status=True
-    ) as session:
-        # getting cat_id and package name from the api
-        details_api = f"https://storeedgefd.dsx.mp.microsoft.com/v9.0/products/{product_id}?market=US&locale=en-us&deviceFamily=Windows.Desktop"
-        data = await (await session.get(details_api)).text()
-        response = json.loads(
+    async with session.get(api_url + params) as response:
+        data = await response.text()
+        return json.loads(
             data,
             object_hook=lambda obj: {
                 k: json.loads(v) if k == "FulfillmentData" else v
@@ -326,14 +325,28 @@ async def url_generator(url, ignore_ver, all_dependencies):
             },
         )
 
-        if not response.get("Payload", None):
-            raise Exception("No Data Found: --> [Wrong URL, Try Again!]")
 
-        response_data = response["Payload"]["Skus"][0]
-        data_list = response_data.get("FulfillmentData", None)
+async def url_generator(url, ignore_ver, all_dependencies):
+    """Generate download URLs for Microsoft Store apps"""
+    try:
+        product_id = extract_product_id(url)
 
-        # check and see if the app is ump or not, return --> func_output,(ump or not)
-        if data_list:
-            return await uwp_gen(session)
-        else:
-            return await non_uwp_gen(session)
+        timeout = aiohttp.ClientTimeout(total=60)
+        async with aiohttp.ClientSession(
+            timeout=timeout, raise_for_status=True
+        ) as session:
+            response = await fetch_product_details(session, product_id)
+
+            if not response.get("Payload"):
+                raise ValueError("Invalid product ID or URL")
+
+            # Get fulfillment data from response
+            data_list = response["Payload"]["Skus"][0].get("FulfillmentData")
+
+            # Route to appropriate handler based on app type
+            if data_list:
+                return await uwp_gen(session, data_list, ignore_ver, all_dependencies)
+            return await non_uwp_gen(session, product_id)
+
+    except (aiohttp.ClientError, json.JSONDecodeError) as e:
+        raise ConnectionError(f"Failed to fetch app details: {str(e)}")
