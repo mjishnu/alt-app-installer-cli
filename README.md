@@ -14,5 +14,5 @@ A simple cli version of [alt app installer](https://github.com/mjishnu/alt-app-i
 - Install [git](https://git-scm.com/download/win)
 - Open a git bash terminal run the command `git clone https://github.com/mjishnu/alt-app-installer-cli`
 - Now install python3 and pip, go to the cloned folder and run the command `pip install -r requirements.txt`
-- Run the "run.bat" or run the command `.\run` in the terminal from the cloned folder
+- Run the command `./run "app url"` in the terminal from the cloned folder
 - Enjoy!
