@@ -11,7 +11,7 @@ def default_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     handler = logging.FileHandler("log.txt", mode="a", delay=True)
     custom_format = (
-        f"[{name} logs] \n[%(asctime)s]\n\n %(levelname)s: %(message)s\n{82*"-"}\n"
+        f"[{name} logs] \n[%(asctime)s]\n\n %(levelname)s: %(message)s\n{82 * '-'}\n"
     )
     handler.setFormatter(logging.Formatter(custom_format, datefmt="%d-%m-%Y %H:%M:%S"))
     logger.addHandler(handler)
@@ -48,7 +48,7 @@ def download(url, ignore_ver, all_dependencies):
                 "mirrors": new_url_gen,
             }
         )
-    d.start(tasks=tasks, retries=3, overwrite=False, clear_terminal=False)
+    d.start(tasks=tasks, retries=3, overwrite=False)
     print(f"Downloaded Package:{final_data}")
 
     return path_lst, uwp

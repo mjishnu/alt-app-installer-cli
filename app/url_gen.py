@@ -66,7 +66,9 @@ def select_best(items, curr_arch, ignore_ver=False, is_installer=False):
                 dt = 0
                 ver_tuple = (0, 0, 0, 0)
             else:
-                dt = datetime.datetime.fromisoformat(modified_str)
+                clean_str = modified_str.rstrip("Z")
+                clean_str = re.sub(r"(\.\d{6})\d+", r"\1", clean_str)
+                dt = datetime.datetime.fromisoformat(clean_str)
                 ver_tuple = tuple(map(int, version_str.split(".")))
             return (arch_score, type_score, dt, ver_tuple)
 
