@@ -9,6 +9,10 @@ from pypdl import Pypdl
 from url_gen import url_generator
 
 
+class FolderNotFoundError(Exception):
+    pass
+
+
 def default_logger(name: str) -> logging.Logger:
     """Creates a default debugging logger."""
     logger = logging.getLogger(name)
@@ -21,29 +25,33 @@ def default_logger(name: str) -> logging.Logger:
     return logger
 
 
-def download(url, ignore_ver, all_dependencies, progress):
-    print("Fetching data...")
-    main_dict, final_data, file_name, uwp = asyncio.run(
-        url_generator(url, ignore_ver, all_dependencies)
-    )
-
-    dwnpath = "downloads/"
+def download(
+    url, progress, dwnpath, arch, ignore_ver, all_dependencies, no_dependencies
+):
+    if dwnpath is None:
+        dwnpath = "downloads/"
+        os.makedirs(dwnpath, exist_ok=True)
 
     if not os.path.exists(dwnpath):
-        os.makedirs(dwnpath)
+        raise FolderNotFoundError(f"Output directory '{dwnpath}' does not exist!")
+    print("Fetching data...")
+    arch = arch if arch != "auto" else None
+    main_dict, final_data, main_file, uwp = asyncio.run(
+        url_generator(url, ignore_ver, all_dependencies, arch)
+    )
 
     path_lst = []
     tasks = []
-    d = Pypdl(logger=default_logger("downloader"), max_concurrent=2)
-    for f_name in final_data:
+
+    def create_task(f_name):
         remote_url = main_dict[f_name]
-        path = f"{dwnpath}{f_name}"
-        path_lst.append(path)
+        path = os.path.join(dwnpath, f_name)
 
         async def new_url_gen():
             urls = await url_generator(url, ignore_ver, all_dependencies)
             return urls[0][f_name]
 
+        path_lst.append(path)
         tasks.append(
             {
                 "url": remote_url,
@@ -51,6 +59,16 @@ def download(url, ignore_ver, all_dependencies, progress):
                 "mirrors": new_url_gen,
             }
         )
+
+    d = Pypdl(logger=default_logger("downloader"), max_concurrent=2)
+
+    if no_dependencies:
+        create_task(main_file)
+        final_data = [main_file]
+    else:
+        for f_name in final_data:
+            create_task(f_name)
+
     display = True if progress == "full" else False
     block = False if progress == "simple" else True
 

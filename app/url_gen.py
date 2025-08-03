@@ -79,7 +79,7 @@ def select_best(items, curr_arch, ignore_ver=False, is_installer=False):
     return max(candidates, key=score)
 
 
-def parse_dict(main_dict, file_name, ignore_ver, all_dependencies):
+def parse_dict(main_dict, file_name, ignore_ver, all_dependencies, arch):
     """Parse the dictionary and return the best file(s)"""
     # Prep the incoming 'file_name' for matching
     base_name = clean_name(file_name.split("-")[0])
@@ -108,7 +108,7 @@ def parse_dict(main_dict, file_name, ignore_ver, all_dependencies):
     file_arch = None
     main_file_name_entry = None
     pat_main = re.compile(base_name)
-    sys_arch = os_arc()
+    sys_arch = arch or os_arc()
 
     # Identify the main file
     matching_base = None
@@ -151,7 +151,7 @@ def parse_dict(main_dict, file_name, ignore_ver, all_dependencies):
     return final_list, file_name
 
 
-async def uwp_gen(session, data_list, ignore_ver, all_dependencies):
+async def uwp_gen(session, data_list, ignore_ver, all_dependencies, arch):
     """Get UWP app installer info from Microsoft Store"""
     cat_id = data_list["WuCategoryId"]
     main_file_name = data_list["PackageFamilyName"].split("_")[0]
@@ -225,7 +225,7 @@ async def uwp_gen(session, data_list, ignore_ver, all_dependencies):
 
     # 4. Choose the best files via parse_dict
     parse_names, main_file_name = parse_dict(
-        name_modified, main_file_name, ignore_ver, all_dependencies
+        name_modified, main_file_name, ignore_ver, all_dependencies, arch
     )
 
     # Build a dict of {filename: (update_id, revision_number)}
@@ -264,10 +264,15 @@ async def uwp_gen(session, data_list, ignore_ver, all_dependencies):
     if len(file_dict) != len(final_dict):
         raise Exception("server returned an incomplete list")
 
-    return file_dict, parse_names, main_file_name, True
+    return (
+        file_dict,  # {name: url}
+        parse_names,  # file name list
+        main_file_name,  # main file
+        True,  # is_uwp flag
+    )
 
 
-async def non_uwp_gen(session, product_id):
+async def non_uwp_gen(session, product_id, arch):
     """Get non-UWP app installer info from Microsoft Store"""
 
     # 1. Fetch package manifest
@@ -293,7 +298,9 @@ async def non_uwp_gen(session, product_id):
     }
 
     # 5. Build result
-    chosen = select_best(installer_options, curr_arch=os_arc(), is_installer=True)
+    chosen = select_best(
+        installer_options, curr_arch=arch or os_arc(), is_installer=True
+    )
     main_file_name = f"{clean_name(package_name)}.{chosen[2]}"
 
     return (
@@ -328,7 +335,7 @@ async def fetch_product_details(session, product_id):
         )
 
 
-async def url_generator(url, ignore_ver, all_dependencies):
+async def url_generator(url, ignore_ver, all_dependencies, arch):
     """Generate download URLs for Microsoft Store apps"""
     try:
         product_id = extract_product_id(url)
@@ -347,8 +354,10 @@ async def url_generator(url, ignore_ver, all_dependencies):
 
             # Route to appropriate handler based on app type
             if data_list:
-                return await uwp_gen(session, data_list, ignore_ver, all_dependencies)
-            return await non_uwp_gen(session, product_id)
+                return await uwp_gen(
+                    session, data_list, ignore_ver, all_dependencies, arch
+                )
+            return await non_uwp_gen(session, product_id, arch)
 
     except (aiohttp.ClientError, json.JSONDecodeError) as e:
         raise ConnectionError(f"Failed to fetch app details: {str(e)}")
