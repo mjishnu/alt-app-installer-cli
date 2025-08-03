@@ -23,10 +23,16 @@ parser.add_argument(
     help="Include all dependencies",
     action="store_true",
 )
-
+parser.add_argument(
+    "-p",
+    "--progress",
+    help="Set the progress bar type",
+    choices=["full", "simple", "none"],
+    default="full",
+)
 args = parser.parse_args()
 print("Downloading Packages...")
-data = download(args.url, args.ignore_ver, args.all_dependencies)
+data = download(args.url, args.ignore_ver, args.all_dependencies, args.progress)
 if not args.download_only:
     print("Installing Packages...")
     install(*data)
