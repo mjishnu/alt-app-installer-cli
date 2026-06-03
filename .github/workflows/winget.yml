@@ -1,0 +1,14 @@
+name: Publish to WinGet
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Submit update to WinGet
+        uses: vedantmgoyal9/winget-releaser@main
+        with:
+          identifier: mjishnu.AltAppInstallerCLI
+          token: ${{ secrets.WINGET_TOKEN }}
