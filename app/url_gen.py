@@ -35,6 +35,18 @@ def clean_name(badname):
     return name.lower()
 
 
+def parse_iso_datetime(iso_str):
+    """Parse ISO 8601 datetime string, handling 'Z' suffix and >6 digit fractions."""
+    # Replace 'Z' with '+00:00' for UTC (needed for Python < 3.11)
+    if iso_str.endswith("Z"):
+        iso_str = iso_str[:-1] + "+00:00"
+    # Truncate fractional seconds to 6 digits (microseconds) if longer
+    match = re.match(r"(.+\.\d{6})\d+(.*)$", iso_str)
+    if match:
+        iso_str = match.group(1) + match.group(2)
+    return datetime.datetime.fromisoformat(iso_str)
+
+
 def select_best(items, curr_arch, ignore_ver=False, is_installer=False):
     """
     Select best item based on scoring system.
@@ -66,9 +78,7 @@ def select_best(items, curr_arch, ignore_ver=False, is_installer=False):
                 dt = 0
                 ver_tuple = (0, 0, 0, 0)
             else:
-                clean_str = modified_str.rstrip("Z")
-                clean_str = re.sub(r"(\.\d{6})\d+", r"\1", clean_str)
-                dt = datetime.datetime.fromisoformat(clean_str)
+                dt = parse_iso_datetime(modified_str)
                 ver_tuple = tuple(map(int, version_str.split(".")))
             return (arch_score, type_score, dt, ver_tuple)
 

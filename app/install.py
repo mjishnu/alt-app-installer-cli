@@ -23,7 +23,7 @@ def install(paths, uwp):
 
         print(f"Processed: {path.split('/')[-1]}")
 
-        if output.returncode != 0:
+        if output.returncode != 0 and output.stderr:
             with open("log.txt", "a") as f:
                 current_time = datetime.now().strftime("[%d-%m-%Y %H:%M:%S]")
                 f.write(f"[powershell logs] \n{current_time}\n\n")
@@ -33,4 +33,4 @@ def install(paths, uwp):
 
         time.sleep(0.3)
 
-    print("Operation Completed, check logs.txt for more info")
+    print("Operation Completed, check log.txt for more info")
