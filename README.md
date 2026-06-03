@@ -33,6 +33,7 @@ python main.py https://example.com/app -o ./my-downloads
 | Short | Long | Description | Choices | Default |
 |-------|------|-------------|---------|---------|
 | `-v` | `--version` | Show version information | - | - |
+| `-h` | `--help` | Show help information | - | - |
 | `-d` | `--download_only` | Download only, don't install | - | `False` |
 | `-deps` | `--dependencies` | Dependency handling mode | `all`, `required`, `ignore_ver`, `none` | `required` |
 | `-p` | `--progress` | Progress bar type | `full`, `simple`, `none` | `full` |
@@ -42,7 +43,7 @@ python main.py https://example.com/app -o ./my-downloads
 ### Dependency Options
 
 - **`all`**: Install all available dependencies
-- **`required`**: Install only latest version of dependencies accrording to your current architecture (default)
+- **`required`**: Install only latest version of dependencies according to your current architecture (default)
 - **`ignore_ver`**: Install all version of dependencies for your current architecture
 - **`none`**: Skip dependencies entirely
 
@@ -53,12 +54,10 @@ python main.py https://example.com/app -o ./my-downloads
 - **`none`**: Text-only output
 
 ## 📸 Screenshots
+<img alt="Screenshot 2025-08-04 013759" src="https://github.com/user-attachments/assets/2ea32cae-8021-4036-84a1-92f3ccb0c51c" />
+<br><br>
 
-![Screenshot 2024-06-20 134921-min](https://github.com/mjishnu/alt-app-installer-cli/assets/83004520/d47bdc96-ff57-43b0-bd96-c4c77ad18375)
-
-![Screenshot 2024-06-20 135021-min](https://github.com/mjishnu/alt-app-installer-cli/assets/83004520/b9d217d5-8eb9-469c-9d9d-d2d31f3d42f1)
-
-![Screenshot 2024-06-20 135001-min](https://github.com/mjishnu/alt-app-installer-cli/assets/83004520/e9975215-dbd6-4480-a879-7b682ee9abbb)
+<img alt="Screenshot 2025-08-04 014437" src="https://github.com/user-attachments/assets/c3b88b19-b589-4c6c-884c-d3b9768e332f" />
 
 ## 🔥 Advanced Examples
 
