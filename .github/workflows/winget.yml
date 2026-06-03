@@ -10,5 +10,5 @@ jobs:
       - name: Submit update to WinGet
         uses: vedantmgoyal9/winget-releaser@main
         with:
-          identifier: mjishnu.AltAppInstallerCLI
+          identifier: mjishnu.altappinstallercli
           token: ${{ secrets.WINGET_TOKEN }}
