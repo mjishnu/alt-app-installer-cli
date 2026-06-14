@@ -2,13 +2,45 @@ name: Publish to WinGet
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag to publish (e.g., v1.1.2)"
+        required: true
+        type: string
 
 jobs:
   publish:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
+      - name: Download Komac
+        run: |
+          wget https://github.com/russellbanks/Komac/releases/download/v2.16.0/komac-2.16.0-x86_64-unknown-linux-gnu.tar.gz
+          tar -xzf komac-2.16.0-x86_64-unknown-linux-gnu.tar.gz
+          chmod +x komac
+
       - name: Submit update to WinGet
-        uses: vedantmgoyal9/winget-releaser@main
-        with:
-          identifier: mjishnu.altappinstallercli
-          token: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          # Determine the tag based on how the action was triggered
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.version }}"
+          else
+            TAG="${{ github.event.release.tag_name }}"
+          fi
+
+          # Strip the 'v' for the WinGet version format (e.g., v1.1.2 becomes 1.1.2)
+          VERSION="${TAG#v}"
+
+          # The single x86 .exe is published under 3 architectures so WinGet never
+          # reports a "missing <arch> installer" inconsistency vs. the prior version.
+          # `komac update` emits one installer per installer in the PREVIOUS version
+          # and reads a per-URL architecture override via the "|<arch>" suffix, so the
+          # prior version MUST already list x86/x64/arm64 (bootstrapped once by hand)
+          # for all three to be produced here.
+          URL="https://github.com/mjishnu/alt-app-installer-cli/releases/download/$TAG/altappinstaller-$TAG.exe"
+          ./komac update mjishnu.altappinstallercli \
+            --version "$VERSION" \
+            --urls "$URL|x86" "$URL|x64" "$URL|arm64" \
+            --submit
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
