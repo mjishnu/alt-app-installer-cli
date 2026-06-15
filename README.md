@@ -4,10 +4,24 @@ A command-line version of [Alt App Installer](https://github.com/mjishnu/alt-app
 
 ## 🚀 Quick Start
 
+#### 1. Releases
 - Download the executable from [releases](https://github.com/mjishnu/alt-app-installer-cli/releases)
+- If you encounter a false antivirus positive, download `altappinstaller-cert.zip` from [releases](https://github.com/mjishnu/alt-app-installer-cli/releases/download/v1.1.1/altappinstaller-cert.zip), extract the contents and install `.cer` or run `install cert.bat`.
 - Run: 
 ```bash
 ./altappinstaller.exe "app url"
+```
+
+
+#### 2. Winget
+- Install [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) and run
+```ps1
+winget install mjishnu.altappinstallercli
+```
+- If you encounter a false antivirus positive, download `altappinstaller-cert.zip` from [releases](https://github.com/mjishnu/alt-app-installer-cli/releases/download/v1.1.1/altappinstaller-cert.zip), extract the contents and install `.cer` or run `install cert.bat`.
+- Run: 
+```bash
+altappinstallercli "app url"
 ```
 
 ## 📋 Usage
